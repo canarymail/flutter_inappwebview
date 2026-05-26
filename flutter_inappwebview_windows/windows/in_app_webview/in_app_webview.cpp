@@ -1782,6 +1782,14 @@ namespace flutter_inappwebview_plugin
       lastCursorPos_);
   }
 
+  void InAppWebView::moveFocus()
+  {
+    if (!webViewController) {
+      return;
+    }
+    webViewController->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+  }
+
   void InAppWebView::sendScroll(double delta, bool horizontal)
   {
     if (!webViewCompositionController) {
