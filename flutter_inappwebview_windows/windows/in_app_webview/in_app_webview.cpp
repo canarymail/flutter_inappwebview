@@ -1007,6 +1007,7 @@ namespace flutter_inappwebview_plugin
       return;
     }
 
+    content_navigation_started_ = true;
     std::wstring url = utf8_to_wide(urlRequest->url.value());
 
     wil::com_ptr<ICoreWebView2Environment2> webViewEnv2;
@@ -1054,6 +1055,7 @@ namespace flutter_inappwebview_plugin
       return;
     }
 
+    content_navigation_started_ = true;
     WCHAR* buf = new WCHAR[32768];
     GetModuleFileName(NULL, buf, 32768);
     std::filesystem::path exeAbsPath = std::wstring(buf);
@@ -1250,21 +1252,24 @@ namespace flutter_inappwebview_plugin
           parameters["contextId"] = contextId;
         }
 
-        // [PERF-LOG] Every evaluateJavascript call uses CDP Runtime.evaluate (not native
-        // ExecuteScript). Logging the round-trip time so we can measure CDP overhead.
-        auto evalStartTick = GetTickCount64();
+        uint64_t evalStartTick = 0;
+#ifndef NDEBUG
+        evalStartTick = GetTickCount64();
         auto snippetLen = source.size();
         auto snippet = source.size() > 80 ? source.substr(0, 80) + "..." : source;
         debugLog("[PERF] evaluateJavascript START tick=" + std::to_string(evalStartTick) +
           " len=" + std::to_string(snippetLen) +
           " src=\"" + snippet + "\"");
+#endif
 
         auto hr = webView->CallDevToolsProtocolMethod(L"Runtime.evaluate", utf8_to_wide(parameters.dump()).c_str(), Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
           [this, completionHandler, evalStartTick](HRESULT errorCode, LPCWSTR returnObjectAsJson)
           {
+#ifndef NDEBUG
             auto evalEndTick = GetTickCount64();
             debugLog("[PERF] evaluateJavascript DONE tick=" + std::to_string(evalEndTick) +
               " roundtrip=" + std::to_string(evalEndTick - evalStartTick) + "ms");
+#endif
 
             nlohmann::json result;
             if (succeededOrLog(errorCode)) {
