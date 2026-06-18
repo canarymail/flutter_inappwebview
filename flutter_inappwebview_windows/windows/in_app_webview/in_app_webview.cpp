@@ -1007,7 +1007,6 @@ namespace flutter_inappwebview_plugin
       return;
     }
 
-    content_navigation_started_ = true;
     std::wstring url = utf8_to_wide(urlRequest->url.value());
 
     wil::com_ptr<ICoreWebView2Environment2> webViewEnv2;
@@ -1055,7 +1054,6 @@ namespace flutter_inappwebview_plugin
       return;
     }
 
-    content_navigation_started_ = true;
     WCHAR* buf = new WCHAR[32768];
     GetModuleFileName(NULL, buf, 32768);
     std::filesystem::path exeAbsPath = std::wstring(buf);
