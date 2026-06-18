@@ -1,6 +1,7 @@
 #include "texture_bridge_gpu.h"
 
 #include <iostream>
+#include <chrono>
 
 #include "util/direct3d11.interop.h"
 
@@ -29,8 +30,24 @@ namespace flutter_inappwebview_plugin
 
     auto device_context = graphics_context_->d3d_device_context();
 
+    // [PERF-LOG] CopyResource + Flush run on Flutter's raster thread (called from
+    // GetSurfaceDescriptor which is invoked by the Flutter engine during rasterization).
+    // Flush() is synchronous — it blocks until all GPU commands are queued.
+    // This stalls Flutter's raster thread on every single WebView frame.
+#ifndef NDEBUG
+    auto copyStart = std::chrono::high_resolution_clock::now();
+#endif
     device_context->CopyResource(surface_.get(), src_texture.get());
     device_context->Flush();
+#ifndef NDEBUG
+    auto copyEnd = std::chrono::high_resolution_clock::now();
+    auto copyUs = std::chrono::duration_cast<std::chrono::microseconds>(copyEnd - copyStart).count();
+    if (copyUs > 1000) {
+      OutputDebugStringA(("[PERF] ProcessFrame: CopyResource+Flush took " +
+        std::to_string(copyUs) + "us (" + std::to_string(copyUs / 1000) + "ms) on raster thread. size=" +
+        std::to_string(width) + "x" + std::to_string(height) + "\n").c_str());
+    }
+#endif
   }
 
   void TextureBridgeGpu::EnsureSurface(uint32_t width, uint32_t height)
@@ -79,6 +96,19 @@ namespace flutter_inappwebview_plugin
   const FlutterDesktopGpuSurfaceDescriptor*
     TextureBridgeGpu::GetSurfaceDescriptor(size_t width, size_t height)
   {
+    // [PERF-LOG] GetSurfaceDescriptor is called by Flutter's raster thread.
+    // ProcessFrame (CopyResource + Flush) runs here — on the raster thread.
+    // Log the raster thread ID once so we can compare it to OnFrameArrived's thread ID.
+#ifndef NDEBUG
+    static bool s_rasterThreadLogged = false;
+    if (!s_rasterThreadLogged) {
+      s_rasterThreadLogged = true;
+      OutputDebugStringA(("[PERF] GetSurfaceDescriptor: Flutter raster thread threadId=" +
+        std::to_string(GetCurrentThreadId()) +
+        " tick=" + std::to_string(GetTickCount64()) + "\n").c_str());
+    }
+#endif
+
     const std::lock_guard<std::mutex> lock(mutex_);
 
     if (!is_running_) {
