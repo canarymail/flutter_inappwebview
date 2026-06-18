@@ -208,7 +208,18 @@ namespace flutter_inappwebview_plugin
     wil::com_ptr<ICoreWebView2Controller2> webViewController2;
     if (succeededOrLog(webViewController->QueryInterface(IID_PPV_ARGS(&webViewController2)))) {
       if (!settings->transparentBackground) {
-        webViewController2->put_DefaultBackgroundColor({ 0, 255, 255, 255 });
+        // [FIX1] COREWEBVIEW2_COLOR is {A,R,G,B}. Previous value was {0,255,255,255} (A=0 =
+        // fully transparent), causing a dark flash while content loaded. Fixed to {255,255,255,255}
+        // (A=255 = opaque white) so the WebView shows white instead of transparent before HTML renders.
+        debugLog("[FIX1] prepare(): DefaultBackgroundColor = {A=255,R=255,G=255,B=255} (opaque white). Previously was A=0 (transparent = dark flash). tick=" + std::to_string(GetTickCount64()));
+        webViewController2->put_DefaultBackgroundColor({ 255, 255, 255, 255 });
+      }
+      else {
+        // [FIX5] transparentBackground=true: set fully transparent background so Flutter's
+        // widget behind the WebView shows through. The HTML body is transparent (injected CSS),
+        // so pixels outside email content paint transparent → Flutter dark/light container shows.
+        debugLog("[FIX5] prepare(): transparentBackground=true → DefaultBackgroundColor = {A=0,R=0,G=0,B=0} (fully transparent). tick=" + std::to_string(GetTickCount64()));
+        webViewController2->put_DefaultBackgroundColor({ 0, 0, 0, 0 });
       }
     }
 
@@ -533,6 +544,16 @@ namespace flutter_inappwebview_plugin
         [this](ICoreWebView2* sender, ICoreWebView2NavigationCompletedEventArgs* args)
         {
           isLoading_ = false;
+
+          // [FIX2] Show WebView2 only after our intentional content navigation completes —
+          // not on the initial about:blank load that fires before loadData() is ever called.
+          // content_navigation_started_ is set to true in loadData() before NavigateToString.
+          if (content_navigation_started_) {
+            webViewController->put_IsVisible(true);
+            debugLog("[FIX2] NavigationCompleted: put_IsVisible(true) — content is loaded, WebView2 now visible. tick=" + std::to_string(GetTickCount64()));
+          } else {
+            debugLog("[FIX2] NavigationCompleted: skipping put_IsVisible (content_navigation_started_=false, this is the initial about:blank). tick=" + std::to_string(GetTickCount64()));
+          }
 
           evaluateJavascript(PLATFORM_READY_JS_SOURCE, ContentWorld::page(), nullptr);
 
@@ -1054,6 +1075,11 @@ namespace flutter_inappwebview_plugin
       return;
     }
 
+    // [FIX2] Flag that an intentional content navigation is starting. NavigationCompleted
+    // checks this before calling put_IsVisible(true) so the initial about:blank load
+    // doesn't make the WebView visible before our content is ready.
+    content_navigation_started_ = true;
+    debugLog("[FIX2] loadData(): content_navigation_started_=true, calling NavigateToString. tick=" + std::to_string(GetTickCount64()));
     failedLog(webView->NavigateToString(utf8_to_wide(data).c_str()));
   }
 
@@ -1224,9 +1250,22 @@ namespace flutter_inappwebview_plugin
           parameters["contextId"] = contextId;
         }
 
+        // [PERF-LOG] Every evaluateJavascript call uses CDP Runtime.evaluate (not native
+        // ExecuteScript). Logging the round-trip time so we can measure CDP overhead.
+        auto evalStartTick = GetTickCount64();
+        auto snippetLen = source.size();
+        auto snippet = source.size() > 80 ? source.substr(0, 80) + "..." : source;
+        debugLog("[PERF] evaluateJavascript START tick=" + std::to_string(evalStartTick) +
+          " len=" + std::to_string(snippetLen) +
+          " src=\"" + snippet + "\"");
+
         auto hr = webView->CallDevToolsProtocolMethod(L"Runtime.evaluate", utf8_to_wide(parameters.dump()).c_str(), Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-          [this, completionHandler](HRESULT errorCode, LPCWSTR returnObjectAsJson)
+          [this, completionHandler, evalStartTick](HRESULT errorCode, LPCWSTR returnObjectAsJson)
           {
+            auto evalEndTick = GetTickCount64();
+            debugLog("[PERF] evaluateJavascript DONE tick=" + std::to_string(evalEndTick) +
+              " roundtrip=" + std::to_string(evalEndTick - evalStartTick) + "ms");
+
             nlohmann::json result;
             if (succeededOrLog(errorCode)) {
               nlohmann::json json = nlohmann::json::parse(wide_to_utf8(returnObjectAsJson));
@@ -1842,6 +1881,9 @@ namespace flutter_inappwebview_plugin
     assert(surface_);
 
     // initial size. doesn't matter as we resize the surface anyway.
+    // [PERF-LOG] Surface created at hardcoded 1280x720. On first setSize() from Flutter
+    // the frame pool will be Recreated (NotifySurfaceSizeChanged), which causes a glitch.
+    debugLog("[PERF] createSurface(): initial surface size set to 1280x720 (hardcoded). tick=" + std::to_string(GetTickCount64()));
     surface_->put_Size({ 1280, 720 });
     surface_->put_IsVisible(true);
 
@@ -1861,7 +1903,11 @@ namespace flutter_inappwebview_plugin
     children->InsertAtTop(webview_visual.get());
     webViewCompositionController->put_RootVisualTarget(webview_visual2.get());
 
-    webViewController->put_IsVisible(true);
+    // [FIX2] Start with WebView2 invisible. NavigationCompleted will call put_IsVisible(true)
+    // only after loadData() has started and our content navigation completes, preventing
+    // transparent/empty frames from being captured before any HTML is rendered.
+    debugLog("[FIX2] createSurface(): put_IsVisible(false) — WebView2 hidden until content navigation completes. tick=" + std::to_string(GetTickCount64()));
+    webViewController->put_IsVisible(false);
 
     return true;
   }

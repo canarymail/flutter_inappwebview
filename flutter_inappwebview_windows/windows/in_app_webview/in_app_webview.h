@@ -196,6 +196,9 @@ namespace flutter_inappwebview_plugin
     std::map<UINT64, std::shared_ptr<NavigationAction>> navigationActions_ = {};
     std::shared_ptr<NavigationAction> lastNavigationAction_;
     bool isLoading_ = false;
+    // [FIX2] Set to true in loadData() before NavigateToString. Lets NavigationCompleted
+    // distinguish our intentional content navigation from the initial about:blank load.
+    mutable bool content_navigation_started_ = false;
     std::string pageFrameId_;
     std::map<std::string, std::pair<wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>, EventRegistrationToken>> devToolsProtocolEventListener_ = {};
 
