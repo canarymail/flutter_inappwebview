@@ -290,7 +290,12 @@ class _CustomPlatformViewState extends State<CustomPlatformView> {
     _controller.initialize(
         onPlatformViewCreated: (id) {
           widget.onPlatformViewCreated?.call(id);
-          setState(() {});
+          // initialize() is async; this callback can fire after the widget has
+          // been disposed. Calling setState on an unmounted State dereferences a
+          // null element and crashes.
+          if (mounted) {
+            setState(() {});
+          }
         },
         arguments: widget.creationParams);
 
@@ -301,6 +306,9 @@ class _CustomPlatformViewState extends State<CustomPlatformView> {
     });
 
     _cursorSubscription = _controller._cursor.listen((cursor) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _cursor = cursor;
       });
@@ -439,18 +447,36 @@ class _CustomPlatformViewState extends State<CustomPlatformView> {
   }
 
   void _reportSurfaceSize() async {
+    if (_key.currentContext?.findRenderObject() == null) {
+      return;
+    }
+    await _controller.ready;
+    // The render object captured before the await can be detached by the time
+    // it resolves (widget removed from the tree). Re-fetch and verify it is
+    // still attached before reading geometry.
+    if (!mounted) {
+      return;
+    }
     final box = _key.currentContext?.findRenderObject() as RenderBox?;
-    if (box != null) {
-      await _controller.ready;
+    if (box != null && box.attached) {
       unawaited(_controller._setSize(
           box.size, widget.scaleFactor ?? window.devicePixelRatio));
     }
   }
 
   void _reportWidgetPosition() async {
+    if (_key.currentContext?.findRenderObject() == null) {
+      return;
+    }
+    await _controller.ready;
+    // localToGlobal walks up to the root via getTransformTo, which dereferences
+    // a null ancestor if the box was detached during the await. Re-fetch and
+    // require it to be attached.
+    if (!mounted) {
+      return;
+    }
     final box = _key.currentContext?.findRenderObject() as RenderBox?;
-    if (box != null) {
-      await _controller.ready;
+    if (box != null && box.attached) {
       final position = box.localToGlobal(Offset.zero);
       unawaited(_controller._setPosition(
           position, widget.scaleFactor ?? window.devicePixelRatio));
