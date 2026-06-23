@@ -290,12 +290,16 @@ class _CustomPlatformViewState extends State<CustomPlatformView> {
     _controller.initialize(
         onPlatformViewCreated: (id) {
           widget.onPlatformViewCreated?.call(id);
+<<<<<<< Updated upstream
           // initialize() is async; this callback can fire after the widget has
           // been disposed. Calling setState on an unmounted State dereferences a
           // null element and crashes.
           if (mounted) {
             setState(() {});
           }
+=======
+          if (mounted) setState(() {});
+>>>>>>> Stashed changes
         },
         arguments: widget.creationParams);
 
@@ -306,12 +310,16 @@ class _CustomPlatformViewState extends State<CustomPlatformView> {
     });
 
     _cursorSubscription = _controller._cursor.listen((cursor) {
+<<<<<<< Updated upstream
       if (!mounted) {
         return;
       }
       setState(() {
         _cursor = cursor;
       });
+=======
+      if (mounted) setState(() { _cursor = cursor; });
+>>>>>>> Stashed changes
     });
   }
 
@@ -458,7 +466,13 @@ class _CustomPlatformViewState extends State<CustomPlatformView> {
       return;
     }
     final box = _key.currentContext?.findRenderObject() as RenderBox?;
+<<<<<<< Updated upstream
     if (box != null && box.attached) {
+=======
+    if (box != null) {
+      await _controller.ready;
+      if (!mounted || !box.attached) return;
+>>>>>>> Stashed changes
       unawaited(_controller._setSize(
           box.size, widget.scaleFactor ?? window.devicePixelRatio));
     }
@@ -476,7 +490,13 @@ class _CustomPlatformViewState extends State<CustomPlatformView> {
       return;
     }
     final box = _key.currentContext?.findRenderObject() as RenderBox?;
+<<<<<<< Updated upstream
     if (box != null && box.attached) {
+=======
+    if (box != null) {
+      await _controller.ready;
+      if (!mounted || !box.attached) return;
+>>>>>>> Stashed changes
       final position = box.localToGlobal(Offset.zero);
       unawaited(_controller._setPosition(
           position, widget.scaleFactor ?? window.devicePixelRatio));
