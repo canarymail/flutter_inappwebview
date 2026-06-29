@@ -16,6 +16,23 @@
 
 namespace flutter_inappwebview_plugin
 {
+  // Window procedure for the invisible WebView2 host HWND. When WebView2 dialogs
+  // (e.g. "Save image as...") close, Windows activates this host window. We
+  // redirect focus to the real Flutter top-level window so the app stays in front
+  // instead of yielding to the previously-active application.
+  LRESULT CALLBACK InAppWebViewManager::WebView2HostWndProc(
+      HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+  {
+    if (msg == WM_ACTIVATE && LOWORD(wp) != WA_INACTIVE) {
+      HWND owner = GetWindow(hwnd, GW_OWNER);
+      if (owner) {
+        HWND root = GetAncestor(owner, GA_ROOT);
+        if (root) SetForegroundWindow(root);
+      }
+    }
+    return DefWindowProc(hwnd, msg, wp, lp);
+  }
+
   InAppWebViewManager::InAppWebViewManager(const FlutterInappwebviewWindowsPlugin* plugin)
     : plugin(plugin),
     ChannelDelegate(plugin->registrar->messenger(), InAppWebViewManager::METHOD_CHANNEL_NAME)
@@ -47,7 +64,11 @@ namespace flutter_inappwebview_plugin
     }
 
     windowClass_.lpszClassName = CustomPlatformView::CLASS_NAME;
-    windowClass_.lpfnWndProc = &DefWindowProc;
+    // Use a custom proc instead of DefWindowProc so that when WebView2 dialogs
+    // (e.g. "Save image as...") close and Windows activates this invisible host
+    // window, focus is immediately redirected back to the real Flutter top-level
+    // window rather than falling through to the previously-active application.
+    windowClass_.lpfnWndProc = &InAppWebViewManager::WebView2HostWndProc;
 
     RegisterClass(&windowClass_);
   }

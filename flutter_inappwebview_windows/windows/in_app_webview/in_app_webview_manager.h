@@ -59,6 +59,8 @@ namespace flutter_inappwebview_plugin
     inline static winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor_ = nullptr;
     WNDCLASS windowClass_ = {};
     inline static bool valid_ = false;
+
+    static LRESULT CALLBACK WebView2HostWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
   };
 }
 #endif //FLUTTER_INAPPWEBVIEW_PLUGIN_IN_APP_WEBVIEW_MANAGER_H_
