@@ -17,17 +17,24 @@
 namespace flutter_inappwebview_plugin
 {
   // Window procedure for the invisible WebView2 host HWND. When WebView2 dialogs
-  // (e.g. "Save image as...") close, Windows activates this host window. We
-  // redirect focus to the real Flutter top-level window so the app stays in front
-  // instead of yielding to the previously-active application.
+  // (e.g. "Save image as...") close, Windows activates this host window via
+  // WA_CLICKACTIVE (mouse-driven activation from dialog close). We redirect
+  // focus to the real Flutter top-level window so the app stays in front.
+  // WA_ACTIVE (programmatic activation) is intentionally excluded to avoid
+  // yanking focus on unrelated activation events — in particular, WebView2
+  // acquiring focus (e.g. user clicking inside a compose WebView) also sends
+  // WA_ACTIVE to this host HWND, and intercepting it would steal keyboard focus
+  // back to Flutter, making the WebView impossible to type in.
   LRESULT CALLBACK InAppWebViewManager::WebView2HostWndProc(
       HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
   {
-    if (msg == WM_ACTIVATE && LOWORD(wp) != WA_INACTIVE) {
+    if (msg == WM_ACTIVATE && LOWORD(wp) == WA_CLICKACTIVE) {
       HWND owner = GetWindow(hwnd, GW_OWNER);
       if (owner) {
         HWND root = GetAncestor(owner, GA_ROOT);
-        if (root) SetForegroundWindow(root);
+        if (root && !SetForegroundWindow(root)) {
+          debugLog("[InAppWebView] SetForegroundWindow failed after dialog close (foreground-lock denied)", true, __FILE__, __LINE__);
+        }
       }
     }
     return DefWindowProc(hwnd, msg, wp, lp);
