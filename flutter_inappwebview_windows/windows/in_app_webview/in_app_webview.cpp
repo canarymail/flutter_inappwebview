@@ -512,6 +512,30 @@ namespace flutter_inappwebview_plugin
 
           lastNavigationAction_ = navigationAction;
 
+          // Custom (non-network) schemes, e.g. a registered app URI like dove://, can never
+          // be resolved by WebView2's navigation stack the way http(s) documents are (those
+          // go through the CDP Fetch-based shouldOverrideUrlLoading path above). Left
+          // uncancelled here, WebView2 falls through to the OS's "external protocol" launch
+          // confirmation. Cancel it and route through shouldOverrideUrlLoading instead, so the
+          // app's own navigation handler gets the same chance to handle it that it gets for
+          // http(s) links.
+          bool isNetworkScheme = url.has_value() && (
+            starts_with(url.value(), std::string{ "http://" }) ||
+            starts_with(url.value(), std::string{ "https://" }) ||
+            starts_with(url.value(), std::string{ "file://" }) ||
+            starts_with(url.value(), std::string{ "about:" }) ||
+            starts_with(url.value(), std::string{ "data:" }));
+
+          if (!isNetworkScheme && settings->useShouldOverrideUrlLoading) {
+            args->put_Cancel(true);
+            auto callback = std::make_unique<WebViewChannelDelegate::ShouldOverrideUrlLoadingCallback>();
+            callback->nonNullSuccess = [](const NavigationActionPolicy actionPolicy) { return false; };
+            callback->defaultBehaviour = [](const std::optional<const NavigationActionPolicy> actionPolicy) {};
+            callback->error = [](const std::string& error_code, const std::string& error_message, const flutter::EncodableValue* error_details) {};
+            channelDelegate->shouldOverrideUrlLoading(std::move(navigationAction), std::move(callback));
+            return S_OK;
+          }
+
           UINT64 navigationId;
           if (SUCCEEDED(args->get_NavigationId(&navigationId))) {
             navigationActions_.insert({ navigationId, navigationAction });
