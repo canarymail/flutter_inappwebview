@@ -201,7 +201,20 @@ namespace flutter_inappwebview_plugin
   {
     debugLog("dealloc CustomPlatformView");
     event_sink_ = nullptr;
-    texture_registrar_->UnregisterTexture(texture_id_, nullptr);
+
+    // The capture objects belong to this, the platform thread, so they go
+    // here. The bridge then stops calling back into this view.
+    texture_bridge_->Shutdown();
+
+    // The engine unregisters the texture on the raster thread, and until then
+    // a frame can still draw it, calling the texture's callback and through it
+    // the bridge. Both stay alive until the engine runs this callback, on the
+    // raster thread once the texture's last frame is done, and go with it.
+    std::shared_ptr<flutter::TextureVariant> texture =
+      std::move(flutter_texture_);
+    std::shared_ptr<TextureBridge> bridge = std::move(texture_bridge_);
+    texture_registrar_->UnregisterTexture(texture_id_,
+      [texture = std::move(texture), bridge = std::move(bridge)]() {});
   }
 
   void CustomPlatformView::RegisterEventHandlers()

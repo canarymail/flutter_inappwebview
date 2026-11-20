@@ -30,6 +30,11 @@ namespace flutter_inappwebview_plugin
 
     bool Start();
     void Stop();
+    // Stops capturing for good and releases the capture objects. Call it on
+    // the platform thread, which created them, before handing the bridge to
+    // another thread to destroy. Afterwards the bridge gives the engine no
+    // frame and calls none of its callbacks.
+    void Shutdown();
 
     void SetOnFrameAvailable(FrameAvailableCallback callback)
     {

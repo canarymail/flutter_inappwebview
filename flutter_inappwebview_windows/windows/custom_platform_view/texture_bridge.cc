@@ -98,6 +98,20 @@ namespace flutter_inappwebview_plugin
     StopInternal();
   }
 
+  void TextureBridge::Shutdown()
+  {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    StopInternal();
+    if (capture_item_) {
+      capture_item_->remove_Closed(on_closed_token_);
+      capture_item_ = nullptr;
+    }
+    frame_pool_ = nullptr;
+    last_frame_ = nullptr;
+    frame_available_ = nullptr;
+    surface_size_changed_ = nullptr;
+  }
+
   void TextureBridge::StopInternal()
   {
     if (is_running_) {
